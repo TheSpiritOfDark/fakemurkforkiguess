@@ -1,5 +1,69 @@
 #!/bin/bash
 
+#################################################
+#   __       __  __    __   ______   __    __   #
+#  |  \     /  \|  \  |  \ /      \ |  \  |  \  # 
+#  | $$\   /  $$| $$  | $$|  $$$$$$\| $$  | $$| #
+#  | $$$\ /  $$$| $$  | $$| $$___\$$| $$__| $$| # 
+#  | $$$$\  $$$$| $$  | $$ \$$    \ | $$    $$| #  
+#  | $$\$$ $$ $$| $$  | $$ _\$$$$$$\| $$$$$$$$| #  
+#  | $$ \$$$| $$| $$__/ $$|  \__| $$| $$  | $$| #
+#  | $$  \$ | $$ \$$    $$ \$$    $$| $$  | $$| #  
+#   \$$      \$$  \$$$$$$   \$$$$$$  \$$   \$$| #  
+#################################################
+#
+# Mush v1.0 - Release
+# Mush v1.1 - Currently in progress, patching bugs, making ui more readable, and adding more utils
+#
+# Mush - the replacement for crosh whenever fakemurk is installed. It allows you
+# to do anything to the OS basically. Instead of this being the normal mush that is installed
+# with fakemurk, this is a modded version that comes with more colorful text, utils, etc.
+#
+# Created by misterfonka <misterfonka@gmail.com>
+# Project link: https://github.com/misterfonka/MushMod
+#
+# May be freely distributed and modified as needed
+# as long as lines 22 and 23 are kept in.
+
+#########################
+# REGULAR USE FUNCTIONS #
+#########################
+
+HWID=$(crossystem hwid | sed 's/X86//g' | sed 's/ *$//g' | sed 's/ /_/g')
+BOARD=$(crossystem hwid | sed 's/X86//g' | sed 's/ *$//g'| awk 'NR==1{print $1}' | cut -f 1 -d'-')
+FWVERSION=$(crossystem fwid)
+
+# functions for colored text
+echo_red() {
+	echo -e "\E[0;31m$1\e[0m"
+}
+
+echo_green() {
+	echo -e "\E[0;32m$1\e[0m"
+}
+
+echo_yellow() {
+	echo -e "\E[1;33m$1\e[0m"
+}
+
+echo_blue() {
+    echo -e "\033[34m$1\033[0m"
+}
+
+redread_text() {
+  local text="$1"
+  echo -ne "\e[31m$text\e[0m"
+}
+
+red_read() {
+  local prompt="$1"
+  local var_name="$2"
+  
+  redread_text "$prompt"
+  read -r "$var_name"
+}
+
+# gets the largest NVMe namespace, most of the time your internal storage
 get_largest_nvme_namespace() {
     # this function doesn't exist if the version is old enough, so we redefine it
     local largest size tmp_size dev
@@ -16,6 +80,7 @@ get_largest_nvme_namespace() {
     echo "${largest}"
 }
 
+# find bugs
 traps() {
     set +e
     trap 'last_command=$current_command; current_command=$BASH_COMMAND' DEBUG
@@ -23,29 +88,21 @@ traps() {
     trap '' INT
 }
 
-mush_info() {
-    cat <<-EOF
-Welcome to mush, the fakemurk developer shell.
 
-If you got here by mistake, don't panic! Just close this tab and carry on.
-
-This shell contains a list of utilities for performing certain actions on a fakemurked chromebook
-
-EOF
-
-    if ! test -f /mnt/stateful_partition/telemetry_selected; then
-        read -r -p "Would you like to opt-in to telemetry? To figure out what Mercury should focus on next and get a general idea of what the most common policies are, your policy will be sent to our servers. Depending on how management is setup, this may contain the name of your school district and or wifi password. Policies that may contain that information will never be shared publicly. Would you like to enable this feature (pls say yes 🥺) [Y\n]" choice
-        case "$choice" in
-            n | N) : ;;
-            *) doas touch /mnt/stateful_partition/telemetry_opted_in ;;
-        esac
-        doas touch /mnt/stateful_partition/telemetry_selected
-    fi
-}
+# executes a command as root over SSH
 doas() {
+    # since the OS thinks we’re in verified mode, it refuses to let filesystems be mounted
+    # with the “setuid” bit, breaking sudo in the proccess. so we have to use a SSH connection
+    # to be able to run things as sudo/root.
+
+    # if you wanna run a command as root, use 'ssh -t -p 1337 root@127.0.0.1'
+
+    # another issue with the OS thinking we're in verified mode, since frecon doesn't run
+    # in verified mode, you also can't access vt2/dev console.
     ssh -t -p 1337 -i /rootkey -oStrictHostKeyChecking=no root@127.0.0.1 "$@"
 }
 
+# executes a command in a subshell and sets up signal trapping
 runjob() {
     trap 'kill -2 $! >/dev/null 2>&1' INT
     (
@@ -54,12 +111,14 @@ runjob() {
     trap '' INT
 }
 
+# reads and discards input from stdin
 swallow_stdin() {
     while read -t 0 notused; do
         read input
     done
 }
 
+# opens a file for editing
 edit() {
     if which nano 2>/dev/null; then
         doas nano "$@"
@@ -68,47 +127,8 @@ edit() {
     fi
 }
 
-main() {
-    traps
-    mush_info
-    while true; do
-        cat <<-EOF
-(1) Root Shell
-(2) Chronos Shell
-(3) Crosh
-(4) Powerwash
-(5) Soft Disable Extensions
-(6) Hard Disable Extensions
-(7) Hard Enable Extensions
-(8) Emergency Revert & Re-Enroll
-(9) Edit Pollen
-EOF
-        if ! test -d /mnt/stateful_partition/crouton; then
-            echo "(10) Install Crouton"
-        else
-            echo "(11) Start Crouton"
-        fi
-        echo "(12) Attempt to update to the latest chrome os version (BETA, BUGGY, MAY BREAK)"
-        swallow_stdin
-        read -r -p "> (1-12): " choice
-        case "$choice" in
-        1) runjob doas bash ;;
-        2) runjob bash ;;
-        3) runjob /usr/bin/crosh.old ;;
-        4) runjob powerwash ;;
-        5) runjob softdisableext ;;
-        6) runjob harddisableext ;;
-        7) runjob hardenableext ;;
-        8) runjob revert ;;
-        9) runjob edit /etc/opt/chrome/policies/managed/policy.json ;;
-        10) runjob install_crouton ;;
-        11) runjob start_crouton ;;
-        12) runjob attempt_update ;;
-        *) echo "invalid option" ;;
-        esac
-    done
-}
 # https://chromium.googlesource.com/chromiumos/docs/+/master/lsb-release.md
+# a utility function that extracts a value from an LSB (Linux Standard Base) release file
 lsbval() {
   local key="$1"
   local lsbfile="${2:-/etc/lsb-release}"
@@ -124,6 +144,7 @@ lsbval() {
       p
     }" "${lsbfile}"
 }
+# retrieves the booted kernal number
 get_booted_kernnum() {
     if doas "((\$(cgpt show -n \"$dst\" -i 2 -P) > \$(cgpt show -n \"$dst\" -i 4 -P)))"; then
         echo -n 2
@@ -131,6 +152,7 @@ get_booted_kernnum() {
         echo -n 4
     fi
 }
+# returns the opposite number of a given input (2 becomes 4, 4 becomes 2, etc.)
 opposite_num() {
     if [ "$1" == "2" ]; then
         echo -n 4
@@ -144,6 +166,12 @@ opposite_num() {
         return 1
     fi
 }
+
+##############################
+# FUNCTIONS FOR ACTIONS CHOSE #
+###############################
+
+# everything below here is self explaintory so i wont be commenting stuff out
 attempt_update(){
     local builds=$(curl https://chromiumdash.appspot.com/cros/fetch_serving_builds?deviceCategory=Chrome%20OS)
     local release_board=$(lsbval CHROMEOS_RELEASE_BOARD)
@@ -198,13 +226,15 @@ attempt_update(){
         echo "update not required"
     fi
 }
+
 powerwash() {
     echo "ARE YOU SURE YOU WANT TO POWERWASH??? THIS WILL REMOVE ALL USER ACCOUNTS"
     sleep 2
     echo "(press enter to continue, ctrl-c to cancel)"
     swallow_stdin
     read -r
-    doas rm -f /stateful_unfucked
+    # there is just a executable for powerwashing so i guess that is the easy way
+    doas echo "fast safe" >/mnt/stateful_partition/factory_install_reset
     doas reboot
     exit
 }
@@ -242,6 +272,7 @@ revert() {
     doas reboot
     sleep 1000
 }
+
 harddisableext() { # calling it "hard disable" because it only reenables when you press
     echo "Please choose the extension you wish to disable."
     echo "(1) GoGuardian"
@@ -319,13 +350,365 @@ softdisableext() {
         sleep 0.5
     done
 }
+
 install_crouton() {
     doas "bash <(curl -SLk https://goo.gl/fd3zc) -t xfce -r bullseye"
     touch /mnt/stateful_partition/crouton
 }
+
 start_crouton() {
     doas "startxfce4"
 }
+
+credits() {
+    clear
+    echo "$(echo_red "[misterfonka]") $(echo_yellow "     - Creating MushMod")"
+    echo "$(echo_red "[MercuryWorkshop]") $(echo_yellow " - Creating fakemurk, which made all of this possible")"
+    red_read "Press enter to continue." ripge
+}
+
+revert_mush() {
+    clear
+    echo_red "Are you sure you want to do this? This can be reversible, but you will have to reinstall MushMod if wanted."
+    read -p "Enter to confirm, CTRL+C to cancel."
+    echo "Reverting MushMod back to mush..."
+    doas "rm -f /usr/bin/crosh"
+    doas "cp /usr/bin/mush.old /usr/bin/crosh"
+    echo "Reverting complete! Reboot if needed."
+    sleep 4
+}
+
+revert_crosh() {
+    clear
+    echo_red "ARE YOU SURE YOU WANT TO DO THIS!!!"
+    echo ""
+    echo_red "This is a bad idea, you will not be able to reinstall the mush shell after doing this."
+    read -p "Press enter to confirm, CTRL+C to cancel."
+    echo ""
+    echo "Reverting mush back to crosh..."
+    doas "rm -f /usr/bin/crosh"
+    doas "cp /usr/bin/crosh.old /usr/bin/crosh"
+    echo "Reverted successfully! Reboot if needed."
+    sleep 4
+}
+
+fredestroyer() {
+    clear
+	echo_red "ARE YOU SURE YOU WANT TO DO THIS?"
+	echo "THIS WILL BREAK FORCE RE-ENROLLMENT"
+	echo "MEANING YOU CAN NEVER RE-ENROLL EVER AGAIN."
+	echo "BY TYPING DoIt, YOU ACKNOWLEDGE THAT THE CREATOR"
+	echo "IS NOT RESPONSIBLE FOR ANY DAMAGE/HARM THAT COMES"
+	echo "FROM THIS SCRIPT."
+	read -p "Type DoIt to accept and continue: " doit
+
+	if [[ "$doit" = "DoIt" ]]; then
+		echo ""
+		echo_red "Breaking force re-enrollment..."
+		doas "vpd -i "RW_VPD" -s "check_enrollment"="0" &> /dev/null"
+  		doas "vpd -i "RW_VPD" -s "block_devmode"="0" &> /dev/null"
+  		doas "vpd -d "stable_device_secret_DO_NOT_SHARE" &> /dev/null"
+  		doas "dump_vpd_log --force &> /dev/null"
+  		doas "crossystem clear_tpm_owner_request=1"
+		echo ""
+		echo "Done!"
+		sleep 3
+		clear
+		echo "Rebooting. Please wait."
+		sleep 5
+		reboot
+	else
+		echo "Exiting..."
+		exit 0
+	fi
+}
+
+ResetGBB () {
+    doas "/usr/share/vboot/bin/set_gbb_flags.sh 0  &> /dev/null"
+}
+
+ViewGBB () {
+  doas "flashrom -r bios.bin &> /dev/null"
+  doas "gbb_utility --get --flags bios.bin | grep -w "flags:" | tr -d "flags :""
+  doas "rm bios.bin"
+}
+
+SetGBB() {
+  doas "flashrom -r bios.bin &> /dev/null"
+  doas "gbb_utility --set --flags=$set_gbbchoice bios.bin &> /dev/null"
+  doas "flashrom -i GBB -w bios.bin &> /dev/null"
+  doas "rm bios.bin"
+}
+
+gbbutils() {
+    clear
+    echo "Welcome to GBBUtils."
+    echo "Note: Hardware WP needs to be off for everything except option 4."
+    echo ""
+    echo "1) Reset GBB Flags"
+    echo "2) View Current GBB Flags"
+    echo "3) Set GBB Flags"
+    read -p "Enter the corresponding number for what you want to do: " gbbchoice
+
+    if [[ "$gbbchoice" = "1" ]]; then
+        clear
+        echo "Are you sure you want to reset your GBB flags?"
+        read -p "Type DoIt to confirm: " doit
+
+        if [[ "$doit" = "DoIt" ]]; then
+            clear
+            echo "Setting GBB flags to factory default..."
+            ResetGBB
+            echo "Reset GBB flags successfully."
+        else
+            clear
+            echo "User didn't want to do it..."
+        fi
+
+    elif [[ "$gbbchoice" = "2" ]]; then
+        clear
+        ViewGBB
+
+    elif [[ "$gbbchoice" = "3" ]]; then
+        clear
+        read -p "What do you want to set the GBB flags to? " set_gbbchoice
+        clear
+        echo "Are you sure you want to set your GBB flags to $set_gbbchoice?"
+        read -p "Type DoIt to confirm: " doit
+
+        if [[ "$doit" = "DoIt" ]]; then
+            clear
+            echo "Setting GBB flags to $set_gbbchoice..."
+            SetGBB
+            echo "Set GBB flags to $set_gbbchoice successfully."
+        else
+            clear
+            echo "User didn't want to do it..."
+        fi
+else
+    echo "ERROR: INVALID CHOICE"
+    exit 1
+fi
+}
+
+show_crossystem_values() {
+    clear
+    echo_red "crossystem values:"
+    crossystem
+    echo_blue "--------------------------------------"
+}
+
+show_rw_vpd_values() {
+    echo_red "RW_VPD values:"
+    doas "vpd -i RW_VPD -l"
+    echo_blue "--------------------------------------"
+}
+
+show_ro_vpd_values() {
+    echo_red "RO_VPD values:"
+    doas "vpd -i RO_VPD -l"
+    echo_blue "--------------------------------------"
+}
+
+FWWPStatus() {
+    fwwp_status=$(crossystem wpsw_cur)
+    if [[ $fwwp_status == "0" ]]; then
+        echo "Disabled"
+    else
+        echo "Enabled"
+    fi
+}
+
+install_chromebrew() {
+    doas 'su chronos -s /bin/bash -c "curl -Lsk git.io/vddgY | bash" && exit'
+}
+
+dumpbios() {
+    clear
+    echo "Are you sure you want to dump the current system BIOS/Firmware?"
+    echo "Nothing bad can come from this, it will just make the bios.bin file"
+    echo "in the directory you ran this script in."
+    echo ""
+    read -p "Type DoIt to confirm: " doit
+
+    if [[ "$doit" = "DoIt" ]]; then
+        clear
+        echo "Dumping system BIOS/Firmware..."
+        doas "pushd /home/chronos/user/Downloads
+        clear
+        flashrom -r bios.bin &> /dev/null
+        popd
+        exit"
+        clear
+        echo "Done! Look in /home/chronos/user/Downloads (just labeled 'Downloads' in the file explorer) for the .bin file."
+        sleep 1
+        echo "Dumped successfully."
+    else
+        clear
+        echo "User didn't want to do it..."
+    fi
+}
+
+firmwareutil() {
+	clear
+	curl -LOk mrchromebox.tech/firmware-util.sh
+	clear
+	doas "bash firmware-util.sh"
+}
+
+###################################
+# DISPLAY MENU, OPTIONS, AND INFO #
+###################################
+
+# shows mushmod info
+mushmod() {
+    clear
+    echo_green "Welcome to the MushMod Tools/Settings!"
+    echo ""
+    echo_blue "Choose a action:"
+    echo ""
+    echo "$(echo_red "[1]") $(echo_yellow " Revert to mush")"
+    echo "$(echo_red "[2]") $(echo_yellow " Revert to crosh")"
+    red_read "> [1-2]: " modchoice
+    
+        if [[ "$modchoice" = "1" ]]; then
+            revert_mush
+        elif [[ "$modchoice" = "2" ]]; then
+            revert_crosh
+        else 
+            echo "ERROR: INVALID OPTION"
+        fi
+}
+
+# Shows the mush info
+mush_info() {
+echo_green "Welcome to mush, the fakemurk developer shell."
+
+echo_green "If you got here by mistake, don't panic! Just close this tab and carry on."
+
+echo_green "This shell contains a list of utilities for performing certain actions on a fakemurked chromebook"
+
+echo ""
+
+echo_green "WP Status: $fwwp_status HWID: $HWID FW Version: $FWVERSION Boardname: $BOARD"
+
+echo_red   "This installation of fakemurk has been modified by MushMod. Don't report any bugs you encounter to Mercury Workshop."
+
+echo ""
+
+echo_blue "Welcome to Mush! Here are some"
+echo_blue "utilities you can use to enhance your"
+echo_blue "fakemurk experience."
+echo ""
+}
+
+# Main menu for mush
+main() {
+    traps
+    mush_info
+    while true; do
+echo "$(echo_red "[1]") $(echo_yellow " MushMod Tools/Settings")"
+echo "$(echo_red "[2]") $(echo_yellow " Root Shell")"
+echo "$(echo_red "[3]") $(echo_yellow " Chronos Shell")"
+echo "$(echo_red "[4]") $(echo_yellow " Crosh")"
+echo "$(echo_red "[5]") $(echo_yellow " Powerwash")"
+echo "$(echo_red "[6]") $(echo_yellow " Soft Disable Extensions")"
+echo "$(echo_red "[7]") $(echo_yellow " Hard Disable Extensions")"
+echo "$(echo_red "[8]") $(echo_yellow " Hard Enable Extensions")"
+echo "$(echo_red "[9]") $(echo_yellow " Emergency Revert & Re-Enroll")"
+echo "$(echo_red "[10]") $(echo_yellow "Edit Pollen")"
+
+        if ! test -d /mnt/stateful_partition/crouton; then
+            echo "$(echo_red "[11]") $(echo_yellow "Install Crouton")"
+        else
+            echo "$(echo_red "[12]") $(echo_yellow "Start Crouton")"
+        fi
+
+echo "$(echo_red "[13]") $(echo_yellow "FREDestroyer")"
+echo "$(echo_red "[14]") $(echo_yellow "GBBUtils")"
+echo "$(echo_red "[15]") $(echo_yellow "View configuration")"
+echo "$(echo_red "[16]") $(echo_yellow "Dump BIOS/Firmware")"
+echo "$(echo_red "[17]") $(echo_yellow "MrChromeboxes Firmware Utility")"
+echo "$(echo_red "[18]") $(echo_yellow "[MAY BREAK] Update ChromeOS")"
+echo "$(echo_red "[19]") $(echo_yellow "[MAY BREAK] Install Chromebrew")"
+echo "$(echo_red "[C]") $(echo_yellow " MushMod About/Credits")"
+echo "$(echo_red "[R]") $(echo_yellow " Reboot")"
+
+        # users choice
+        swallow_stdin
+        red_read "> [1-12]: " choice
+
+        if [[ "$choice" = "1" ]]; then
+            mushmod
+
+        elif [[ "$choice" = "2" ]]; then
+            doas bash
+
+        elif [[ "$choice" = "3" ]]; then
+            bash
+
+        elif [[ "$choice" = "4" ]]; then
+            /usr/bin/crosh.old
+
+        elif [[ "$choice" = "5" ]]; then
+            powerwash
+
+        elif [[ "$choice" = "6" ]]; then
+            softdisableext
+
+        elif [[ "$choice" = "7" ]]; then
+            harddisableext
+
+        elif [[ "$choice" = "8" ]]; then
+            hardenableext
+
+        elif [[ "$choice" = "9" ]]; then
+            revert
+
+        elif [[ "$choice" = "10" ]]; then
+            edit /etc/opt/chrome/policies/managed/policy.json
+
+        elif [[ "$choice" = "11" ]]; then
+            install_crouton
+
+        elif [[ "$choice" = "12" ]]; then
+            start_crouton
+
+        elif [[ "$choice" = "13" ]]; then
+            fredestroyer
+
+        elif [[ "$choice" = "14" ]]; then
+            gbbutils
+
+        elif [[ "$choice" = "15" ]]; then 
+            show_crossystem_values
+	        show_rw_vpd_values
+	        show_ro_vpd_values
+
+        elif [[ "$choice" = "16" ]]; then 
+            dumpbios
+
+        elif [[ "$choice" = "17" ]]; then 
+            firmwareutil
+
+        elif [[ "$choice" = "18" ]]; then 
+            attempt_update
+
+        elif [[ "$choice" = "19" ]]; then 
+            install_chromebrew
+
+        elif [[ "$choice" =~ [Rr] ]]; then
+	        reboot
+
+        elif [[ "$choice" =~ [Cc] ]]; then
+	        credits
+
+        else
+            echo "ERROR: Invalid option."
+        fi
+    done
+}
+
 if [ "$0" = "$BASH_SOURCE" ]; then
     stty sane
     main
